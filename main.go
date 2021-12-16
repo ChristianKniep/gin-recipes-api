@@ -7,6 +7,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"os"
 	"fmt"
+	"time"
 )
 
 func main() {
@@ -31,4 +32,12 @@ func main() {
 	router.Use(ot)
 	router.Run()
 
+}
+
+type Recipe struct {
+	Name string `json:"name"`
+	Tags []string `json:"tags"`
+	Ingredients []string `json:"ingredients"`
+	Instructions []string `json:"instructions"`
+	PublishedAt time.Time `json:"publishedAt"`
 }
