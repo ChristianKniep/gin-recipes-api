@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	ginopentracing "github.com/Bose/go-gin-opentracing"
@@ -18,8 +21,8 @@ var recipes []Recipe
 
 func init() {
 	recipes = make([]Recipe, 0)
-	//file, _ := ioutil.ReadFile("recipes.json")
-	//_ = json.Unmarshal([]byte(file), &recipes)
+	file, _ := ioutil.ReadFile("recipes.json")
+	_ = json.Unmarshal([]byte(file), &recipes)
 }
 
 func main() {
@@ -46,6 +49,7 @@ func main() {
 	router.GET("/recipes", ListRecipesHandler)
 	router.PUT("/recipes/:id", UpdateRecipeHandler)
 	router.DELETE("/recipes/:id", DeleteRecipeHandler)
+	router.GET("/recipes/search", SearchRecipeHandler)
 	router.Run()
 }
 
@@ -115,4 +119,21 @@ func DeleteRecipeHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Recipe has been deleted",
 	})
+}
+
+func SearchRecipeHandler(c *gin.Context) {
+	tag := c.Query("tag")
+	listOfRecipes := make([]Recipe, 0)
+	for _, r := range recipes {
+		found := false
+		for _, t := range r.Tags {
+			if strings.EqualFold(t, tag) {
+				found = true
+			}
+		}
+		if found {
+			listOfRecipes = append(listOfRecipes, r)
+		}
+	}
+	c.JSON(http.StatusOK, listOfRecipes)
 }
