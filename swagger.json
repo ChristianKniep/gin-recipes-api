@@ -23,7 +23,7 @@
   "paths": {
     "/recipes": {
       "get": {
-        "description": "Returns list of recipes",
+        "description": "Returns list of recipes from backend",
         "produces": [
           "aplication/json"
         ],
