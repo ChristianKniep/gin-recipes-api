@@ -5,11 +5,14 @@ services:
     volumes:
       - ${PWD}:/go/src/local/gin
     ports:
-      - 8080:8080
+      - 8181:8080
+    working_dir: /go/src/local/gin
     command: ["sleep", "inf"]
   mongo:
     image: mongo:5.0.5
     restart: always
+    ports:
+     - 27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
@@ -61,25 +64,6 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_SECURITY_ALLOW_EMBEDDING=true
-#  loki:
-#    image: grafana/loki:2.4.1
-#    restart: unless-stopped
-#    ports:
-#      - 3100:3100
-#    volumes:
-#      - ./compose/loki/config/loki-config.yaml:/etc/loki/loki-config.yaml
-#      - ./compose/loki/data:/data/loki
-#    command: -config.file=/etc/loki/loki-config.yaml
-#  zinc:
-#    image: public.ecr.aws/m5j1b6u0/zinc:v0.1.1
-#    ports:
-#      - 4080:4080
-#    environment:
-#     - FIRST_ADMIN_USER=admin
-#     - FIRST_ADMIN_PASSWORD=Complexpass#123
-#     - DATA_PATH=/data
-#    volumes:
-#      - ./zinc/data:/data
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.16.1
     volumes:
@@ -107,7 +91,7 @@ services:
     environment:
       LS_JAVA_OPTS: "-Xmx256m -Xms256m"
     depends_on:
-      - zinc
+      - elasticsearch
   kibana:
     image: docker.elastic.co/kibana/kibana:7.16.1
     volumes:
