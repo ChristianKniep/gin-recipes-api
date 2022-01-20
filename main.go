@@ -26,6 +26,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-redis/redis"
+
 	ginopentracing "github.com/Bose/go-gin-opentracing"
 	"github.com/gin-contrib/opengintracing"
 	"github.com/gin-gonic/gin"
@@ -57,7 +59,15 @@ func init() {
 		listOfRecipes = append(listOfRecipes, recipe)
 	}
 	collection := client.Database(os.Getenv("MONDO_DATABASE")).Collection("recipes")
-	recipesHandler = handlers.NewRecipesHandler(ctx, collection)
+	// Redis
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+	status := redisClient.Ping()
+	fmt.Print(status)
+	recipesHandler = handlers.NewRecipesHandler(ctx, collection, redisClient)
 	var itemCount int64
 	itemCount = 0
 	itemCount, err = collection.CountDocuments(ctx, bson.D{})
@@ -73,6 +83,7 @@ func init() {
 		}
 		log.Println("Insert recipes: ", len(insertManyResult.InsertedIDs))
 	}
+
 }
 
 func main() {

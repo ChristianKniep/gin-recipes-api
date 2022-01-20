@@ -1,7 +1,7 @@
 version: '3'
 services:
   gin:
-    image: golang:1.17
+    image: golang:rc
     volumes:
       - ${PWD}:/go/src/local/gin
     ports:
@@ -100,6 +100,9 @@ services:
       - "5601:5601"
     depends_on:
       - elasticsearch
-
+  redis:
+    image: redis:6.2.6
+    ports:
+      - 6379:6379
 volumes:
   elasticsearch:
