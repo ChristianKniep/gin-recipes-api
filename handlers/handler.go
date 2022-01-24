@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"local/gin/gin-recipes-api/models"
 	"log"
@@ -11,21 +12,25 @@ import (
 
 	"github.com/gin-contrib/opengintracing"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type RecipesHandler struct {
-	collection *mongo.Collection
-	ctx        context.Context
+	collection  *mongo.Collection
+	ctx         context.Context
+	redisClient *redis.Client
 }
 
-func NewRecipesHandler(ctx context.Context, col *mongo.Collection) *RecipesHandler {
+func NewRecipesHandler(ctx context.Context, col *mongo.Collection, redisClient *redis.Client) *RecipesHandler {
 	return &RecipesHandler{
-		collection: col,
-		ctx:        ctx,
+		collection:  col,
+		ctx:         ctx,
+		redisClient: redisClient,
 	}
 }
 
@@ -43,37 +48,67 @@ func (h *RecipesHandler) ListRecipesHandler(c *gin.Context) {
 		"ListRecipesHandler",
 		opentracing.ChildOf(span.Context()))
 	defer sp.Finish()
-	sp_find := opentracing.StartSpan(
-		"MongoDB.Find",
+	sp_redis := opentracing.StartSpan(
+		"RedisCache.Find",
 		opentracing.ChildOf(sp.Context()))
-	cur, err := h.collection.Find(h.ctx, bson.M{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		sp_find.Finish()
-		return
-	}
-	sp_find.Finish()
-	defer cur.Close(h.ctx)
-	recipes := make([]models.Recipe, 0)
-	sp_for := opentracing.StartSpan(
-		"LoopMongoDBResult",
-		opentracing.ChildOf(sp.Context()))
-	for cur.Next(h.ctx) {
-		var recipe models.Recipe
-		err = cur.Decode(&recipe)
+	val, err := h.redisClient.Get("recipes").Result()
+	sp_redis.Finish()
+	if err == redis.Nil {
+		log.Printf("reqeust to Mongo")
+
+		sp_find := opentracing.StartSpan(
+			"MongoDB.Find",
+			opentracing.ChildOf(sp.Context()))
+		cur, err := h.collection.Find(h.ctx, bson.M{})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			sp_for.Finish()
+			sp_find.Finish()
 			return
 		}
-		recipes = append(recipes, recipe)
+		sp_find.Finish()
+		defer cur.Close(h.ctx)
+		recipes := make([]models.Recipe, 0)
+		sp_for := opentracing.StartSpan(
+			"LoopMongoDBResult",
+			opentracing.ChildOf(sp.Context()))
+		for cur.Next(h.ctx) {
+			var recipe models.Recipe
+			err = cur.Decode(&recipe)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				sp_for.Finish()
+				return
+			}
+			recipes = append(recipes, recipe)
+		}
+		sp_for.Finish()
+		sp_redis := opentracing.StartSpan(
+			"RedisPutIntoCache",
+			opentracing.ChildOf(sp.Context()))
+		data, _ := json.Marshal(recipes)
+		h.redisClient.Set("recipes", string(data), 30*time.Minute)
+		sp_redis.Finish()
+		sp_res := opentracing.StartSpan(
+			"c.JSON()",
+			opentracing.ChildOf(sp.Context()))
+		c.JSON(http.StatusOK, recipes)
+		sp_res.Finish()
+	} else if err != nil {
+		sp_res := opentracing.StartSpan(
+			"c.JSON()",
+			opentracing.ChildOf(sp.Context()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sp_res.Finish()
+	} else {
+		log.Printf("Request to Redis")
+		sp_res := opentracing.StartSpan(
+			"c.JSON()",
+			opentracing.ChildOf(sp.Context()))
+		recipes := make([]models.Recipe, 0)
+		json.Unmarshal([]byte(val), &recipes)
+		c.JSON(http.StatusOK, recipes)
+		sp_res.Finish()
 	}
-	sp_for.Finish()
-	sp_res := opentracing.StartSpan(
-		"c.JSON()",
-		opentracing.ChildOf(sp.Context()))
-	c.JSON(http.StatusOK, recipes)
-	sp_res.Finish()
 }
 
 // swagger:operation PUT /recipes/{id} recipes updateRecipes
@@ -138,6 +173,7 @@ func (h *RecipesHandler) UpdateRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_res := opentracing.StartSpan(
 		"c.JSON()",
 		opentracing.ChildOf(sp.Context()))
@@ -166,6 +202,7 @@ func (h *RecipesHandler) NewRecipeHandler(c *gin.Context) {
 		opentracing.ChildOf(sp.Context()))
 	var recipe models.Recipe
 	if err := c.ShouldBindJSON(&recipe); err != nil {
+		err = errors.Wrapf(err, "While c.ShouldBindJSON()")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		sp_json.Finish()
 		return
@@ -188,6 +225,7 @@ func (h *RecipesHandler) NewRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_ins.Finish()
 	sp_res := opentracing.StartSpan(
 		"c.JSON()",
@@ -235,6 +273,7 @@ func (h *RecipesHandler) DeleteRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_res := opentracing.StartSpan("c.JSON()", opentracing.ChildOf(sp.Context()))
 	c.JSON(http.StatusOK, gin.H{"message": "Recipe has been deleted"})
 	sp_res.Finish()
