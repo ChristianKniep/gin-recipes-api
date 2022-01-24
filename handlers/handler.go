@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -172,6 +173,7 @@ func (h *RecipesHandler) UpdateRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_res := opentracing.StartSpan(
 		"c.JSON()",
 		opentracing.ChildOf(sp.Context()))
@@ -200,6 +202,7 @@ func (h *RecipesHandler) NewRecipeHandler(c *gin.Context) {
 		opentracing.ChildOf(sp.Context()))
 	var recipe models.Recipe
 	if err := c.ShouldBindJSON(&recipe); err != nil {
+		err = errors.Wrapf(err, "While c.ShouldBindJSON()")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		sp_json.Finish()
 		return
@@ -222,6 +225,7 @@ func (h *RecipesHandler) NewRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_ins.Finish()
 	sp_res := opentracing.StartSpan(
 		"c.JSON()",
@@ -269,6 +273,7 @@ func (h *RecipesHandler) DeleteRecipeHandler(c *gin.Context) {
 		sp_res.Finish()
 		return
 	}
+	h.redisClient.Del("recipes")
 	sp_res := opentracing.StartSpan("c.JSON()", opentracing.ChildOf(sp.Context()))
 	c.JSON(http.StatusOK, gin.H{"message": "Recipe has been deleted"})
 	sp_res.Finish()
